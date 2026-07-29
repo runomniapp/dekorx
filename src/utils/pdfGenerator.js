@@ -278,7 +278,7 @@ export function generateArchitecturalPDFProposal({
   <div class="totals-card">
     <div class="section-title" style="color: #FAD02C; border-color: #FAD02C;">Maliyet & Genel Toplam Özeti</div>
     <div class="totals-row"><span>Zemin Kaplama Toplamı:</span><span>₺${pricingBreakdown.floorCost.toLocaleString('tr-TR')}</span></div>
-    <div class="totals-row"><span>Dolap Modülleri Toplamı (${pricingBreakdown.totalCabinetCount} Adet):</span><span>₺${(pricingBreakdown.baseCabinetsCost + pricingBreakdown.wallCabinetsCost + pricingBreakdown.tallCabinetsCost + pricingBreakdown.islandCabinetsCost).toLocaleString('tr-TR')}</span></div>
+    <div class="totals-row"><span>Dolap Modülleri Toplamı (${pricingBreakdown.totalCabinetCount} Adet):</span><span>₺${(pricingBreakdown.baseCabinetsCost + pricingBreakdown.wallCabinetsCost + pricingBreakdown.tallCabinetsCost + pricingBreakdown.islandCabinetsCost + (pricingBreakdown.fixturesCost || 0)).toLocaleString('tr-TR')}</span></div>
     <div class="totals-row"><span>Otomatik Tezgah İmalatı (${pricingBreakdown.totalCountertopLengthMeters}m):</span><span>₺${pricingBreakdown.countertopCost.toLocaleString('tr-TR')}</span></div>
     <div class="totals-row"><span>Blum Frenli Aksesuar & LED Aydınlatma:</span><span>₺${pricingBreakdown.accessoriesCost.toLocaleString('tr-TR')}</span></div>
     <div class="totals-row"><span>Nakliye, Montaj & İşçilik (%12):</span><span>₺${pricingBreakdown.assemblyCost.toLocaleString('tr-TR')}</span></div>

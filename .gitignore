@@ -32,3 +32,6 @@ pnpm-debug.log*
 
 # Claude Code local settings (launch.json is shared on purpose)
 .claude/settings.local.json
+
+# Dev render debug cikti
+.debug/

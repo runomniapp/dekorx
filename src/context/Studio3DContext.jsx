@@ -6,10 +6,12 @@ import {
   AVAILABLE_MODULE_TYPES,
   calculateDataDrivenPricing
 } from '../utils/pricingEngine';
+import { MODULE_ROOMS, getDefaultY } from '../utils/moduleCatalog';
 
 const Studio3DContext = createContext();
 
-const LOCAL_STORAGE_KEY = 'dekorx_3d_design_state_v1';
+// Katalog v2 ile modül id'leri değişti; eski kayıtlı sahneler artık geçersiz.
+const LOCAL_STORAGE_KEY = 'dekorx_3d_design_state_v2';
 
 export const DOOR_MODEL_STYLES = [
   { id: 'shaker_raised', name: 'Klasik Göbekli Lake (Resim 1)', icon: '🖼️' },
@@ -18,72 +20,33 @@ export const DOOR_MODEL_STYLES = [
   { id: 'arched_solid', name: 'Kemerli Klasik Göbekli (Resim 4)', icon: '👑' }
 ];
 
+// Sahne açılışındaki örnek mutfak kurgusu, katalog tanımlarından türetilir.
+const buildDefaultModule = (id, typeId, x, z, overrides = {}) => {
+  const def = AVAILABLE_MODULE_TYPES.find((m) => m.id === typeId);
+  return {
+    id,
+    typeId,
+    position: [x, getDefaultY(def), z],
+    rotationY: 0,
+    hasGlassDoor: !!def?.hasGlassDoor,
+    customWidth: def?.width ?? 0.6,
+    customHeight: def?.height ?? 0.85,
+    customDepth: def?.depth ?? 0.6,
+    customDoorFinishId: null,
+    handlePosition: 'right',
+    doorStyle: def?.hasGlassDoor ? 'grid_glass' : 'shaker_raised',
+    ...overrides
+  };
+};
+
 const DEFAULT_PLACED_MODULES = [
-  {
-    id: 'm1',
-    typeId: 'base_cabinet_90',
-    position: [-1.2, 0, -1.15],
-    rotationY: 0,
-    hasGlassDoor: false,
-    customWidth: 0.9,
-    customHeight: 0.85,
-    customDepth: 0.6,
-    customDoorFinishId: null,
-    handlePosition: 'right',
-    doorStyle: 'shaker_raised'
-  },
-  {
-    id: 'm2',
-    typeId: 'sink_unit_90',
-    position: [-0.3, 0, -1.15],
-    rotationY: 0,
-    hasGlassDoor: false,
-    customWidth: 0.9,
-    customHeight: 0.85,
-    customDepth: 0.6,
-    customDoorFinishId: null,
-    handlePosition: 'left',
-    doorStyle: 'arched_solid'
-  },
-  {
-    id: 'm3',
-    typeId: 'tall_pantry_60',
-    position: [0.6, 0, -1.15],
-    rotationY: 0,
-    hasGlassDoor: false,
-    customWidth: 0.6,
-    customHeight: 2.1,
-    customDepth: 0.6,
-    customDoorFinishId: null,
-    handlePosition: 'left',
-    doorStyle: 'shaker_raised'
-  },
-  {
-    id: 'm4',
-    typeId: 'wall_cabinet_60_glass',
-    position: [-0.3, 1.4, -1.15],
-    rotationY: 0,
-    hasGlassDoor: true,
-    customWidth: 0.6,
-    customHeight: 0.72,
-    customDepth: 0.35,
-    customDoorFinishId: null,
-    handlePosition: 'right',
-    doorStyle: 'arched_glass'
-  },
-  {
-    id: 'm5',
-    typeId: 'kitchen_island_180',
-    position: [0, 0, 0.6],
-    rotationY: 0,
-    hasGlassDoor: false,
-    customWidth: 1.8,
-    customHeight: 0.9,
-    customDepth: 0.9,
-    customDoorFinishId: null,
-    handlePosition: 'center',
-    doorStyle: 'shaker_raised'
-  }
+  buildDefaultModule('m1', 'mut_alt_3cek', -1.35, -1.15),
+  buildDefaultModule('m2', 'mut_alt_evye', -0.6, -1.15, { handlePosition: 'left' }),
+  buildDefaultModule('m3', 'mut_alt_firin_ocak', 0.15, -1.15),
+  buildDefaultModule('m4', 'mut_boy_firin_mikro', 0.75, -1.15),
+  buildDefaultModule('m5', 'mut_ust_camli', -0.6, -1.325, { position: [-0.6, 1.45, -1.325] }),
+  buildDefaultModule('m6', 'mut_ust_davlumbaz', 0.15, -1.325, { position: [0.15, 1.55, -1.325] }),
+  buildDefaultModule('m7', 'mut_ada_cekmeceli', 0, 0.6, { handlePosition: 'center' })
 ];
 
 export const Studio3DProvider = ({ children }) => {
@@ -141,6 +104,9 @@ export const Studio3DProvider = ({ children }) => {
       : 'm1'
   );
 
+  // 5. Aktif Modül Kategorisi (Mutfak / Gardırop / Banyo ...)
+  const [activeRoomId, setActiveRoomId] = useState(MODULE_ROOMS[0].id);
+
   const [lightingMode, setLightingMode] = useState('day');
   const [isRenderModalOpen, setIsRenderModalOpen] = useState(false);
   const [isBOMModalOpen, setIsBOMModalOpen] = useState(false);
@@ -181,7 +147,7 @@ export const Studio3DProvider = ({ children }) => {
     if (!modDef) return;
 
     const newId = `m_${Date.now()}`;
-    const initialY = modDef.category === 'ust' ? 1.4 : 0;
+    const initialY = getDefaultY(modDef);
 
     setPlacedModules((prev) => [
       ...prev,
@@ -222,7 +188,7 @@ export const Studio3DProvider = ({ children }) => {
     setPlacedModules((prev) =>
       prev.map((m) => {
         if (m.id === id) {
-          const newY = newDef.category === 'ust' ? 1.4 : 0;
+          const newY = getDefaultY(newDef);
           return {
             ...m,
             typeId: newTypeId,
@@ -355,10 +321,10 @@ export const Studio3DProvider = ({ children }) => {
   const registerRenderCapture = useCallback((fn) => {
     renderCaptureRef.current = fn;
   }, []);
-  const captureSceneImage = useCallback((scale = 2) => {
+  const captureSceneImage = useCallback((scale = 2, options = {}) => {
     if (typeof renderCaptureRef.current !== 'function') return null;
     try {
-      return renderCaptureRef.current(scale);
+      return renderCaptureRef.current(scale, options);
     } catch (e) {
       console.error('Scene capture failed:', e);
       return null;
@@ -368,14 +334,112 @@ export const Studio3DProvider = ({ children }) => {
   const triggerRender = () => setIsRenderModalOpen(true);
   const triggerBOMModal = () => setIsBOMModalOpen(true);
 
-  const triggerAiGeneration = () => {
-    setIsAiGenerating(true);
-    setTimeout(() => {
-      setIsAiGenerating(false);
-      const randomFinish = CABINET_DOOR_FINISHES[Math.floor(Math.random() * CABINET_DOOR_FINISHES.length)];
-      setSelectedDoorFinish(randomFinish);
-    }, 1800);
+  // Sahnenin tüm ölçülebilir verisini AI render endpoint'i için paketler
+  const buildSceneManifest = useCallback(() => ({
+    room: roomDimensions,
+    lighting: lightingMode,
+    materials: {
+      doorFinish: selectedDoorFinish.name,
+      countertop: selectedCountertop.name,
+      floor: selectedFloorMaterial.name,
+      autoCountertop: autoCountertopEnabled
+    },
+    modules: placedModules.map((m) => {
+      const def = AVAILABLE_MODULE_TYPES.find((d) => d.id === m.typeId);
+      const finish = m.customDoorFinishId
+        ? CABINET_DOOR_FINISHES.find((f) => f.id === m.customDoorFinishId)
+        : null;
+      return {
+        id: m.id,
+        typeId: m.typeId,
+        name: def?.name || m.typeId,
+        roomName: def?.roomName,
+        sectionName: def?.sectionName,
+        category: def?.category || 'alt',
+        width: m.customWidth || def?.width || 0.6,
+        height: m.customHeight || def?.height || 0.85,
+        depth: m.customDepth || def?.depth || 0.6,
+        position: m.position,
+        rotationY: m.rotationY || 0,
+        hasGlassDoor: !!m.hasGlassDoor,
+        doorStyle: m.doorStyle,
+        handlePosition: m.handlePosition,
+        finishName: finish?.name || null
+      };
+    })
+  }), [
+    roomDimensions, lightingMode, selectedDoorFinish, selectedCountertop,
+    selectedFloorMaterial, autoCountertopEnabled, placedModules
+  ]);
+
+  // Gemini yalnızca belirli en-boy oranlarını kabul eder; kadrajı bozmamak için
+  // yakalanan karenin oranına en yakın olanı seçeriz.
+  const pickAspectRatio = (w, h) => {
+    const options = [['1:1', 1], ['4:3', 4 / 3], ['3:4', 3 / 4], ['16:9', 16 / 9], ['9:16', 9 / 16], ['3:2', 1.5], ['2:3', 2 / 3]];
+    const target = w / h;
+    return options.reduce((best, o) => (Math.abs(o[1] - target) < Math.abs(best[1] - target) ? o : best))[0];
   };
+
+  // ── AI ile Çiz: blockout kareyi + sahne verisini backend'e gönderir
+  const [aiRender, setAiRender] = useState({ status: 'idle' });
+  const [isAiRenderModalOpen, setIsAiRenderModalOpen] = useState(false);
+
+  const triggerAiGeneration = useCallback(async () => {
+    const shot = captureSceneImage(2, { clean: true });
+    if (!shot?.dataUrl) {
+      setAiRender({ status: 'error', error: 'Sahne görüntüsü alınamadı. 3D alanı görünür durumdayken tekrar deneyin.' });
+      setIsAiRenderModalOpen(true);
+      return;
+    }
+
+    const scene = buildSceneManifest();
+    setAiRender({ status: 'loading', sourceImage: shot.dataUrl });
+    setIsAiRenderModalOpen(true);
+    setIsAiGenerating(true);
+
+    try {
+      const res = await fetch('/api/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: shot.dataUrl,
+          scene,
+          aspectRatio: pickAspectRatio(shot.width, shot.height),
+          imageSize: '2K'
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.image) {
+        setAiRender({
+          status: 'error',
+          sourceImage: shot.dataUrl,
+          code: data.code,
+          error: data.error || `Sunucu ${res.status} döndü.`,
+          attempts: data.attempts
+        });
+        return;
+      }
+
+      setAiRender({
+        status: 'done',
+        sourceImage: shot.dataUrl,
+        resultImage: data.image,
+        model: data.model,
+        provider: data.provider,
+        usage: data.usage
+      });
+    } catch (e) {
+      setAiRender({
+        status: 'error',
+        sourceImage: shot.dataUrl,
+        error: `İstek gönderilemedi: ${e.message}`
+      });
+    } finally {
+      setIsAiGenerating(false);
+    }
+  }, [captureSceneImage, buildSceneManifest]);
 
   return (
     <Studio3DContext.Provider
@@ -392,6 +456,8 @@ export const Studio3DProvider = ({ children }) => {
         setAutoCountertopEnabled,
         contextMenu,
         setContextMenu,
+        activeRoomId,
+        setActiveRoomId,
         placedModules,
         addModule,
         removeModule,
@@ -417,6 +483,10 @@ export const Studio3DProvider = ({ children }) => {
         setIsBOMModalOpen,
         isAiGenerating,
         triggerAiGeneration,
+        aiRender,
+        isAiRenderModalOpen,
+        setIsAiRenderModalOpen,
+        buildSceneManifest,
         triggerRender,
         triggerBOMModal,
         registerRenderCapture,

@@ -16,6 +16,7 @@ import { LivePriceCalculator } from './components/studio3d/LivePriceCalculator';
 import { ObjectControls } from './components/studio3d/ObjectControls';
 import { PresetRooms } from './components/studio3d/PresetRooms';
 import { RenderModal } from './components/studio3d/RenderModal';
+import { AiRenderModal } from './components/studio3d/AiRenderModal';
 
 import { ProductGrid } from './components/shop/ProductGrid';
 import { CartDrawer } from './components/shop/CartDrawer';
@@ -48,10 +49,10 @@ function MainAppContent() {
                 </div>
                 <div>
                   <h1 className="font-extrabold text-lg text-gray-900 leading-tight">
-                    Tam Teşekküllü 3D Oda Planlayıcı & Otomatik Tezgah Mimarisi
+                    3D Oda Planlayıcı
                   </h1>
                   <p className="text-xs text-gray-500 font-medium">
-                    Sağ tıklayarak menüyü açın, modülleri dilediğiniz yere sürükleyin, üst/alt & camlı modülleri yerleştirin.
+                    Sağ tıklayın (mobilde modüle basılı tutun), modülleri sürükleyin, boş bir alana dokunarak seçimi kaldırın.
                   </p>
                 </div>
               </div>
@@ -82,6 +83,7 @@ function MainAppContent() {
             </div>
 
             <RenderModal />
+            <AiRenderModal />
           </div>
         )}
 
