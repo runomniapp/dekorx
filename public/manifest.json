@@ -1,0 +1,26 @@
+{
+  "short_name": "DekorX",
+  "name": "DekorX Mobile 3D Interior & Modular Furniture Studio",
+  "description": "Lüks modüler mobilya ve 3D iç mimarlık tasarım platformu.",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#F4F4F6",
+  "theme_color": "#121212",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "categories": ["shopping", "design", "lifestyle"]
+}
