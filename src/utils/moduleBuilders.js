@@ -752,10 +752,91 @@ const buildHangers = (mats, w, y, count = 5) => {
   return g;
 };
 
+// Arıtma / içme suyu musluğu: ana bataryanın yanına gelen ince dikey armatür
+const buildSecondaryTap = (mats) => {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    color: 0x14161A, metalness: 0.6, roughness: 0.32, clearcoat: 0.6, clearcoatRoughness: 0.25
+  });
+
+  const base = cyl(0.026, 0.03, 0.012, bodyMat, 24);
+  base.position.y = 0.006;
+  g.add(base);
+
+  const col = cyl(0.013, 0.016, 0.2, bodyMat, 24);
+  col.position.y = 0.1;
+  g.add(col);
+
+  // Kısa J biçimli ağız
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0.19, 0),
+    new THREE.Vector3(0, 0.225, 0.012),
+    new THREE.Vector3(0, 0.232, 0.05),
+    new THREE.Vector3(0, 0.215, 0.072)
+  ], false, 'centripetal');
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 32, 0.009, 14, false), bodyMat));
+
+  const lever = cyl(0.005, 0.005, 0.05, mats.brass, 12);
+  lever.rotation.z = Math.PI / 2.4;
+  lever.position.set(0.022, 0.176, 0);
+  g.add(lever);
+
+  return g;
+};
+
 const applyExtras = (group, def, item, ctx) => {
   const { w, h, d, mats } = ctx;
   const extras = def.build.extras || [];
   const innerD = d - PANEL_T * 2;
+
+  // Evyeler bataryadan ÖNCE kurulur: batarya konumu çukurun yerleşiminden
+  // türer. Evye kurucuları artık kendi bataryasını eklemez, yoksa katalogdaki
+  // `faucet` aksesuarı ile üst üste iki musluk oluşur.
+  const SINK_EXTRA_KEYS = ['sink_double', 'sink_single', 'undermount_basin', 'double_basin'];
+  let sinkInfo = null;
+
+  extras.filter((e) => SINK_EXTRA_KEYS.includes(e)).forEach((extra) => {
+    if (extra === 'sink_double') {
+      sinkInfo = buildSink(group, w, h, d, mats, true);
+    } else if (extra === 'sink_single' || extra === 'undermount_basin') {
+      sinkInfo = buildSink(group, w, h, d, mats, false);
+    } else if (extra === 'double_basin') {
+      // İki ayrı gömme çanak: modül genişliğini iki eşit bölgeye ayır
+      [-1, 1].forEach((s) => {
+        const sub = new THREE.Group();
+        sub.position.x = s * w * 0.25;
+        buildSink(sub, w * 0.46, h, d, mats, false);
+        group.add(sub);
+      });
+      sinkInfo = { doubleVanity: true, deckY: h + 0.06 };
+    }
+  });
+
+  // Bataryayı evye çukurunun arkasına, doğru gözün üzerine yerleştirir
+  const placeFaucet = (tall = false) => {
+    if (sinkInfo?.doubleVanity) {
+      [-1, 1].forEach((s) => {
+        const f = buildFaucet(mats, tall);
+        f.position.set(s * w * 0.25, sinkInfo.deckY, -d * 0.3);
+        group.add(f);
+      });
+      return null;
+    }
+
+    const f = buildFaucet(mats, tall);
+    if (sinkInfo?.layout) {
+      const l = sinkInfo.layout;
+      const x = l.double ? l.rightBowlCenterX : 0;
+      f.position.set(x, sinkInfo.deckY, l.centerZ - l.cutD / 2 - 0.055);
+      group.add(f);
+      return { x, y: sinkInfo.deckY, z: l.centerZ - l.cutD / 2 - 0.055, layout: l };
+    }
+
+    const y = tall ? h + 0.02 : h + 0.06;
+    f.position.set(0, y, -d * (tall ? 0.3 : 0.28));
+    group.add(f);
+    return { x: 0, y, z: -d * (tall ? 0.3 : 0.28), layout: null };
+  };
 
   const addShelves = (n) => {
     for (let i = 1; i <= n; i++) {
@@ -764,46 +845,27 @@ const applyExtras = (group, def, item, ctx) => {
     }
   };
 
-  extras.forEach((extra) => {
+  extras.filter((e) => !SINK_EXTRA_KEYS.includes(e)).forEach((extra) => {
     switch (extra) {
-      case 'sink_double': {
-        const { layout, deckY } = buildSink(group, w, h, d, mats, true);
-        const f = buildFaucet(mats);
-        f.position.set(layout.rightBowlCenterX, deckY, layout.centerZ - layout.cutD / 2 - 0.055);
-        group.add(f);
-        break;
-      }
-      case 'sink_single': {
-        const { layout, deckY } = buildSink(group, w, h, d, mats, false);
-        const f = buildFaucet(mats);
-        f.position.set(0, deckY, layout.centerZ - layout.cutD / 2 - 0.055);
-        group.add(f);
-        break;
-      }
-      case 'undermount_basin': {
-        buildSink(group, w, h, d, mats, false);
-        break;
-      }
-      case 'double_basin': {
-        // İki ayrı gömme çanak: modül genişliğini iki eşit bölgeye ayır
-        [-1, 1].forEach((s) => {
-          const sub = new THREE.Group();
-          sub.position.x = s * w * 0.25;
-          buildSink(sub, w * 0.46, h, d, mats, false);
-          group.add(sub);
-        });
-        break;
-      }
       case 'faucet': {
-        const f = buildFaucet(mats);
-        f.position.set(0, h + 0.06, -d * 0.28);
-        group.add(f);
+        placeFaucet(false);
         break;
       }
       case 'faucet_tall': {
-        const f = buildFaucet(mats, true);
-        f.position.set(0, h + 0.02, -d * 0.3);
-        group.add(f);
+        placeFaucet(true);
+        break;
+      }
+      case 'faucet_pair': {
+        // Ana batarya + yanında arıtma (içme suyu) musluğu
+        const main = placeFaucet(false);
+        const tap = buildSecondaryTap(mats);
+        if (main) {
+          const side = main.layout?.double ? -1 : 1;
+          tap.position.set(main.x + side * 0.115, main.y, main.z + 0.01);
+        } else {
+          tap.position.set(w * 0.22, h + 0.06, -d * 0.28);
+        }
+        group.add(tap);
         break;
       }
       case 'vessel_basin':

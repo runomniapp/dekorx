@@ -69,10 +69,22 @@ export const MODULE_ROOMS = [
             build: { rows: [{ t: 'drawer' }, { t: 'drawer' }, { t: 'drawer' }, { t: 'drawer' }] }
           },
           {
+            id: 'mut_alt_evye_tek_goz',
+            name: 'Alt Evye Tek Gözlü (Tek Batarya)',
+            width: 0.6, ...D.base, basePrice: 6400, icon: '🚰',
+            build: { rows: [{ t: 'door', n: 1, w: 1 }], extras: ['sink_single', 'faucet', 'alu_tray'] }
+          },
+          {
             id: 'mut_alt_evye',
-            name: 'Alt Evye Modülü (Taban Korumalı)',
+            name: 'Alt Evye Çift Gözlü (Tek Batarya)',
             width: 0.9, ...D.base, basePrice: 7800, icon: '🚰',
             build: { rows: [{ t: 'door', n: 2, w: 1 }], extras: ['sink_double', 'faucet', 'alu_tray'] }
+          },
+          {
+            id: 'mut_alt_evye_aritmali',
+            name: 'Alt Evye Çift Gözlü (Batarya + Arıtma Musluğu)',
+            width: 0.9, ...D.base, basePrice: 9200, icon: '💧',
+            build: { rows: [{ t: 'door', n: 2, w: 1 }], extras: ['sink_double', 'faucet_pair', 'alu_tray'] }
           },
           {
             id: 'mut_alt_firin_ocak',
