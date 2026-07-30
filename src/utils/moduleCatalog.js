@@ -99,6 +99,14 @@ export const MODULE_ROOMS = [
             build: { rows: [{ t: 'cargo', w: 1 }] }
           },
           {
+            id: 'mut_alt_acik_kose_raf',
+            name: 'Alt Açık Köşe Rafı (Kare, Kapaksız)',
+            width: 0.9, depth: 0.9, height: 0.85, basePrice: 5400, icon: '🪟',
+            // Kendi üst paneli var; üzerine otomatik tezgah basılmaz.
+            countertop: false,
+            build: { fixture: 'open_corner' }
+          },
+          {
             id: 'mut_alt_kor_kose',
             name: 'Alt Kör Köşe Modülü',
             width: 0.9, ...D.base, basePrice: 6900, icon: '📐',

@@ -1144,6 +1144,30 @@ const applyExtras = (group, def, item, ctx) => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 const FIXTURES = {
+  // Kare tabanlı açık köşe rafı: kapak/çekmece yok.
+  // Duvara gelen iki yüz (arka -Z ve sol -X) kapalı, diğer iki yüz açık;
+  // raflar dışarıdan görünür. Modülü 90° döndürerek dört köşeye de uyar.
+  open_corner: (w, h, d, mats) => {
+    const g = new THREE.Group();
+    const T = 0.02;
+
+    // Alt ve üst paneller (üstten kare görünüm)
+    g.add(box(w, T, d, mats.door, 0, T / 2, 0));
+    g.add(box(w, T, d, mats.door, 0, h - T / 2, 0));
+
+    // Duvara gelen kapalı yüzler
+    g.add(box(w, h - T * 2, T, mats.door, 0, h / 2, -d / 2 + T / 2));
+    g.add(box(T, h - T * 2, d - T, mats.door, -w / 2 + T / 2, h / 2, T / 2));
+
+    // Raf sayısı yükseklikten türer; ~35 cm'lik gözler oluşur
+    const tiers = Math.max(2, Math.round(h / 0.35));
+    for (let i = 1; i < tiers; i++) {
+      g.add(box(w - T, 0.018, d - T, mats.inner, T / 2, (h * i) / tiers, T / 2));
+    }
+
+    return g;
+  },
+
   // Tezgah üstü çift gözlü evye (bağımsız aksesuar)
   counter_sink: (w, h, d, mats) => {
     const g = new THREE.Group();
