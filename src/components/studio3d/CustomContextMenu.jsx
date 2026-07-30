@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { useStudio3D, DOOR_MODEL_STYLES } from '../../context/Studio3DContext';
 import { CABINET_DOOR_FINISHES, AVAILABLE_MODULE_TYPES } from '../../utils/pricingEngine';
 import {
@@ -40,6 +40,65 @@ export const CustomContextMenu = () => {
   const { showToast } = useApp();
   const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'type' | 'size' | 'color' | 'door_style' | 'handle'
 
+  const menuRef = useRef(null);
+  // Menü ölçülene kadar gizli tutulur, sonra ekran içine sığacak şekilde konumlanır
+  const [layout, setLayout] = useState({ left: 0, top: 0, maxHeight: 0, ready: false });
+
+  // Yeni modülde menü ana sekmeye dönsün
+  useEffect(() => {
+    if (contextMenu) setActiveTab('menu');
+  }, [contextMenu?.moduleId]);
+
+  // Esc ile kapat
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setContextMenu(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [contextMenu, setContextMenu]);
+
+  // Menüyü her zaman görünür alanın içine sıkıştır (mobilde ekran dışına taşmasın)
+  useLayoutEffect(() => {
+    if (!contextMenu) {
+      setLayout((l) => (l.ready ? { ...l, ready: false } : l));
+      return undefined;
+    }
+
+    const place = () => {
+      const el = menuRef.current;
+      if (!el) return;
+
+      const MARGIN = 10;
+      const vw = window.visualViewport?.width || window.innerWidth;
+      const vh = window.visualViewport?.height || window.innerHeight;
+      const maxHeight = Math.max(200, vh - MARGIN * 2);
+
+      const rect = el.getBoundingClientRect();
+      const w = rect.width || 288;
+      const h = Math.min(rect.height || 320, maxHeight);
+
+      // Sağa/aşağı sığmıyorsa dokunma noktasının diğer tarafına aç, sonra kırp
+      let left = contextMenu.x;
+      if (left + w + MARGIN > vw) left = contextMenu.x - w;
+      left = Math.min(Math.max(MARGIN, left), Math.max(MARGIN, vw - w - MARGIN));
+
+      let top = contextMenu.y;
+      if (top + h + MARGIN > vh) top = contextMenu.y - h;
+      top = Math.min(Math.max(MARGIN, top), Math.max(MARGIN, vh - h - MARGIN));
+
+      setLayout({ left, top, maxHeight, ready: true });
+    };
+
+    place();
+    window.addEventListener('resize', place);
+    window.visualViewport?.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.visualViewport?.removeEventListener('resize', place);
+    };
+    // activeTab menü yüksekliğini değiştirir, yeniden konumlanmalı
+  }, [contextMenu, activeTab]);
+
   if (!contextMenu) return null;
 
   const targetModule = placedModules.find((m) => m.id === contextMenu.moduleId);
@@ -51,21 +110,39 @@ export const CustomContextMenu = () => {
   const modDepthCm = Math.round((targetModule.customDepth || currentDef?.depth || 0.6) * 100);
 
   return (
-    <div
-      style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
-      className="fixed z-50 w-72 bg-[#121212] text-white rounded-3xl shadow-2xl border border-white/20 p-3 text-xs animate-in zoom-in-95 duration-150 select-none pointer-events-auto"
-    >
+    <>
+      {/* Boş bir yere dokunmak menüyü kapatır */}
+      <div
+        className="fixed inset-0 z-40"
+        onPointerDown={() => setContextMenu(null)}
+        onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+      />
+
+      <div
+        ref={menuRef}
+        style={{
+          left: `${layout.left}px`,
+          top: `${layout.top}px`,
+          maxHeight: layout.maxHeight ? `${layout.maxHeight}px` : undefined,
+          visibility: layout.ready ? 'visible' : 'hidden'
+        }}
+        className="fixed z-50 w-72 max-w-[calc(100vw-20px)] bg-[#121212] text-white rounded-3xl shadow-2xl border border-white/20 p-3 text-xs animate-in zoom-in-95 duration-150 select-none pointer-events-auto flex flex-col overflow-hidden"
+      >
       {/* Header title */}
-      <div className="px-2 py-1.5 border-b border-white/10 flex items-center justify-between font-bold text-gray-400">
+      <div className="px-2 py-1.5 border-b border-white/10 flex items-center justify-between font-bold text-gray-400 shrink-0">
         <span className="truncate">Modül #{targetModule.id}</span>
-        <button onClick={() => setContextMenu(null)} className="hover:text-white">
+        <button
+          onClick={() => setContextMenu(null)}
+          aria-label="Menüyü kapat"
+          className="w-7 h-7 -mr-1 rounded-lg hover:bg-white/10 hover:text-white flex items-center justify-center shrink-0"
+        >
           <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* Primary Actions Menu */}
       {activeTab === 'menu' && (
-        <div className="py-1 space-y-0.5 max-h-96 overflow-y-auto no-scrollbar">
+        <div className="py-1 space-y-0.5 flex-1 overflow-y-auto no-scrollbar">
           {/* Rotate 90 */}
           <button
             onClick={() => {
@@ -485,6 +562,16 @@ export const CustomContextMenu = () => {
           </div>
         </div>
       )}
-    </div>
+
+        {/* Mobilde net bir çıkış: menüyü kapat */}
+        <button
+          onClick={() => setContextMenu(null)}
+          className="mt-2 shrink-0 w-full min-h-[40px] rounded-2xl bg-white/10 hover:bg-white/20 text-gray-200 font-bold text-[11px] flex items-center justify-center gap-1.5 border border-white/10 active:scale-[0.98] transition-all"
+        >
+          <X className="w-3.5 h-3.5" />
+          Kapat
+        </button>
+      </div>
+    </>
   );
 };

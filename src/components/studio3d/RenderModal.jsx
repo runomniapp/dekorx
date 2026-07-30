@@ -3,6 +3,7 @@ import { useStudio3D } from '../../context/Studio3DContext';
 import { X, Download, Share2, Sparkles } from 'lucide-react';
 import { TouchButton } from '../ui/TouchButton';
 import { useApp } from '../../context/AppContext';
+import { prepareImageFile, releaseImageFile, saveImageFile } from '../../utils/imageDownload';
 import confetti from 'canvas-confetti';
 
 export const RenderModal = () => {
@@ -19,6 +20,7 @@ export const RenderModal = () => {
 
   const [snapshot, setSnapshot] = useState(null);
   const [captureFailed, setCaptureFailed] = useState(false);
+  const [savePayload, setSavePayload] = useState(null);
 
   // Grab the live WebGL frame each time the modal opens
   useEffect(() => {
@@ -37,24 +39,47 @@ export const RenderModal = () => {
     }
   }, [isRenderModalOpen, captureSceneImage]);
 
+  // Paylaşılabilir dosyayı önceden hazırla (mobil kaydetme için şart)
+  useEffect(() => {
+    let cancelled = false;
+    let created = null;
+
+    if (!snapshot?.dataUrl) {
+      setSavePayload(null);
+      return undefined;
+    }
+
+    prepareImageFile(snapshot.dataUrl, 'dekorx-render').then((payload) => {
+      if (cancelled) { releaseImageFile(payload); return; }
+      created = payload;
+      setSavePayload(payload);
+    }).catch(() => setSavePayload(null));
+
+    return () => {
+      cancelled = true;
+      releaseImageFile(created);
+    };
+  }, [snapshot?.dataUrl]);
+
   if (!isRenderModalOpen) return null;
 
-  const handleDownload = () => {
-    if (!snapshot?.dataUrl) {
+  const handleDownload = async () => {
+    if (!savePayload) {
       showToast('Render alınamadı, lütfen tekrar deneyin.');
       return;
     }
 
-    const link = document.createElement('a');
-    link.href = snapshot.dataUrl;
-    link.download = `dekorx-render-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const outcome = await saveImageFile(savePayload);
+    if (outcome === 'cancelled') return;
 
-    confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
-    showToast('HD Render dosyanız indirildi! 📸');
-    setTimeout(() => setIsRenderModalOpen(false), 900);
+    if (outcome === 'opened') showToast('Görsel yeni sekmede açıldı — basılı tutup kaydedin');
+    else if (outcome === 'failed') showToast('Kaydedilemedi, görsele basılı tutarak deneyin');
+    else {
+      confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
+      showToast(outcome === 'shared' ? 'Görsel paylaşıma açıldı 📸' : 'HD Render dosyanız indirildi! 📸');
+    }
+
+    if (outcome !== 'failed') setTimeout(() => setIsRenderModalOpen(false), 900);
   };
 
   const handleShare = async () => {

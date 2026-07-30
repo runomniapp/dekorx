@@ -696,7 +696,9 @@ export const StudioCanvas = () => {
         createSlabGeometry(modWidth + 0.06, modDepth + 0.06, 0.06, getModuleSinkCutout(modDef, modWidth, modDepth)),
         slabMat
       );
-      slabMesh.position.set(item.position[0], modHeight + 0.06, item.position[2]);
+      // Taban yüksekliği dahil edilmeli; yoksa yükseltilen modülün tezgahı
+      // aşağıda yalnız bir plaka olarak kalır.
+      slabMesh.position.set(item.position[0], (item.position[1] || 0) + modHeight + 0.06, item.position[2]);
       slabMesh.rotation.y = item.rotationY;
       slabMesh.castShadow = true;
       countertopGroupRef.current.add(slabMesh);

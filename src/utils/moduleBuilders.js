@@ -1445,8 +1445,10 @@ const buildFront = (rows, ctx, frontW, frontZ, xOffset = 0, rotY = 0) => {
 
   rows.forEach((row) => {
     const weight = row.w ?? 1;
-    const rowH = (ctx.h - PANEL_T) * (weight / totalW);
-    const yc = PANEL_T + acc + rowH / 2;
+    // Bindirmeli (overlay) kapak: ön yüz gövdeyi tabandan tepeye kadar tamamen
+    // kaplar. Aksi halde gövdenin alt panel dilimi kapağın altında görünür.
+    const rowH = ctx.h * (weight / totalW);
+    const yc = acc + rowH / 2;
     acc += rowH;
 
     const builder = ROW_BUILDERS[row.t] || rowPanel;
@@ -1526,7 +1528,7 @@ export const buildModuleGroup = ({ def, item, mats }) => {
     const doorW = w * 0.62;
     const blindW = w - doorW;
     group.add(buildFront(rows, ctx, doorW - REVEAL, frontZ, -w / 2 + doorW / 2));
-    group.add(box(blindW - REVEAL, h - PANEL_T, FRONT_T, mats.door, w / 2 - blindW / 2, h / 2 + PANEL_T / 2, frontZ));
+    group.add(box(blindW - REVEAL, h - REVEAL, FRONT_T, mats.door, w / 2 - blindW / 2, h / 2, frontZ));
   } else {
     const columns = Math.max(1, build.columns || 1);
     const colW = w / columns;
@@ -1542,11 +1544,6 @@ export const buildModuleGroup = ({ def, item, mats }) => {
 
   // ── Aksesuarlar
   applyExtras(group, def, item, ctx);
-
-  // ── Süpürgelik (alt & boy modüllerde)
-  if (h > 0.5 && def.category !== 'ust' && def.category !== 'aksesuar') {
-    group.add(box(w - 0.04, PANEL_T, 0.02, mats.doorDark, 0, PANEL_T / 2, d / 2 - 0.03));
-  }
 
   group.traverse((c) => {
     if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }

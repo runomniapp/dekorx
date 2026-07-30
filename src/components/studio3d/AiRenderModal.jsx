@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStudio3D } from '../../context/Studio3DContext';
-import { X, Download, Sparkles, AlertTriangle, RefreshCw, CreditCard } from 'lucide-react';
+import { X, Download, Sparkles, AlertTriangle, RefreshCw, CreditCard, ExternalLink } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { prepareImageFile, releaseImageFile, saveImageFile } from '../../utils/imageDownload';
 
 // AI ile Çiz sonucu: solda 3D blockout, sağda fotogerçek çıktı.
 export const AiRenderModal = () => {
@@ -14,6 +15,31 @@ export const AiRenderModal = () => {
   } = useStudio3D();
   const { showToast } = useApp();
   const [compare, setCompare] = useState('result');
+  const [savePayload, setSavePayload] = useState(null);
+
+  // Render gelir gelmez paylaşılabilir dosyayı ÖNCEDEN hazırla: mobil tarayıcılar
+  // tıklama anında await beklerse paylaşım/indirme iznini düşürüyor.
+  const readyImage = aiRender.status === 'done' ? aiRender.resultImage : null;
+  useEffect(() => {
+    let cancelled = false;
+    let created = null;
+
+    if (!readyImage) {
+      setSavePayload(null);
+      return undefined;
+    }
+
+    prepareImageFile(readyImage, 'dekorx-ai-render').then((payload) => {
+      if (cancelled) { releaseImageFile(payload); return; }
+      created = payload;
+      setSavePayload(payload);
+    }).catch(() => setSavePayload(null));
+
+    return () => {
+      cancelled = true;
+      releaseImageFile(created);
+    };
+  }, [readyImage]);
 
   if (!isAiRenderModalOpen) return null;
 
@@ -21,15 +47,13 @@ export const AiRenderModal = () => {
   const costLabel = typeof usage?.cost === 'number' ? `$${usage.cost.toFixed(3)}` : null;
   const shown = compare === 'source' ? sourceImage : resultImage || sourceImage;
 
-  const handleDownload = () => {
-    if (!resultImage) return;
-    const link = document.createElement('a');
-    link.href = resultImage;
-    link.download = `dekorx-ai-render-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('AI render indirildi 🖼️');
+  const handleDownload = async () => {
+    if (!savePayload) return;
+    const outcome = await saveImageFile(savePayload);
+    if (outcome === 'shared') showToast('Görsel paylaşıma açıldı 🖼️');
+    else if (outcome === 'opened') showToast('Görsel yeni sekmede açıldı — basılı tutup kaydedin');
+    else if (outcome === 'downloaded') showToast('AI render indirildi 🖼️');
+    else if (outcome === 'failed') showToast('Kaydedilemedi, görsele basılı tutarak deneyin');
   };
 
   return (
@@ -151,12 +175,25 @@ export const AiRenderModal = () => {
 
           <button
             onClick={handleDownload}
-            disabled={!resultImage}
+            disabled={!savePayload}
             className="flex-1 h-12 px-4 rounded-2xl bg-[#FAD02C] hover:bg-[#e0b822] text-black text-xs font-extrabold flex items-center justify-center gap-2 disabled:opacity-40 disabled:hover:bg-[#FAD02C]"
           >
             <Download className="w-4 h-4" />
-            AI Render İndir (.PNG)
+            Görseli Kaydet
           </button>
+
+          {/* Kaydetme yine engellenirse görseli doğrudan açma yolu */}
+          {savePayload && (
+            <a
+              href={savePayload.objectUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="Görseli yeni sekmede aç"
+              className="h-12 w-12 shrink-0 rounded-2xl bg-white border border-gray-200 text-gray-700 flex items-center justify-center hover:bg-gray-100"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
         </div>
       </div>
     </div>
