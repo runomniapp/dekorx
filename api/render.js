@@ -16,15 +16,24 @@ import { buildRenderPrompt } from './_scenePrompt.js';
 // alamadığı için sahnenin yerleşimini koruyamaz. Bu yüzden görsel girdi kabul
 // eden düzenleme modelleri kullanılıyor.
 
+// Bir görsel render'ı ~20 sn sürüyor; varsayılan fonksiyon süresi yetmez.
+export const maxDuration = 60;
+
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+// Süre bütçesi: tek çağrı için üst sınır ve yeni bir modele geçmek için
+// gereken kalan süre. Zincir sırayla 4 modeli denerse fonksiyon süresi aşılır
+// ve kullanıcı ücretlendirilmiş ama sonuçsuz bir istekle kalır.
+const CALL_TIMEOUT_MS = 38_000;
+const NEXT_ATTEMPT_BUDGET_MS = 20_000;
+
 // Kalite sırası: ilk çalışan model kullanılır.
+// Zincir kısa tutulur: her deneme ~9-20 sn sürdüğü için uzun zincir fonksiyon
+// süresini aşar ve kullanıcı ücretlendirilmiş ama sonuçsuz bir istekle kalır.
 const OPENROUTER_MODELS = [
-  'google/gemini-3-pro-image',      // en gerçekçi, ~$0.14/görsel
-  'google/gemini-3.1-flash-image',
-  'google/gemini-2.5-flash-image',  // en ucuz, ~$0.04/görsel
-  'openai/gpt-5-image'
+  'google/gemini-3-pro-image',      // ~20 sn, ~$0.14 — yerleşim sadakati ve gerçekçilik belirgin şekilde daha iyi
+  'google/gemini-2.5-flash-image'   // ~9 sn, ~$0.04 — yalnızca yedek; kalitesi düşük
 ];
 
 const AISTUDIO_MODELS = [
@@ -109,29 +118,50 @@ const classifyError = (status, message = '') => {
   return { code: 'PROVIDER_ERROR', userMessage: message || 'Görsel sağlayıcı beklenmeyen bir hata döndürdü.' };
 };
 
+// Sağlayıcı yanıt vermezse fonksiyon süresini tüketmemesi için zaman aşımı
+const fetchWithTimeout = async (url, options, timeoutMs) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 // ── OpenRouter (sohbet biçimli, görsel çıktılı) ─────────────────────────────
 const callOpenRouter = async ({ model, apiKey, prompt, image, referer }) => {
-  const res = await fetch(OPENROUTER_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      // OpenRouter atıf başlıkları (zorunlu değil, panelde görünürlük sağlar)
-      'HTTP-Referer': referer || 'http://localhost:5173',
-      'X-Title': 'DekorX 3D Studio'
-    },
-    body: JSON.stringify({
-      model,
-      modalities: ['image', 'text'],
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: image.url } }
-        ]
-      }]
-    })
-  });
+  let res;
+  try {
+    res = await fetchWithTimeout(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        // OpenRouter atıf başlıkları (zorunlu değil, panelde görünürlük sağlar)
+        'HTTP-Referer': referer || 'http://localhost:5173',
+        'X-Title': 'DekorX 3D Studio'
+      },
+      body: JSON.stringify({
+        model,
+        modalities: ['image', 'text'],
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: image.url } }
+          ]
+        }]
+      })
+    }, CALL_TIMEOUT_MS);
+  } catch (e) {
+    const timedOut = e?.name === 'AbortError';
+    return {
+      ok: false,
+      status: timedOut ? 504 : 502,
+      message: timedOut ? `Model ${Math.round(CALL_TIMEOUT_MS / 1000)} sn içinde yanıt vermedi.` : String(e?.message || e)
+    };
+  }
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -160,7 +190,9 @@ const callOpenRouter = async ({ model, apiKey, prompt, image, referer }) => {
 
 // ── Google AI Studio (yedek sağlayıcı) ─────────────────────────────────────
 const callGemini = async ({ model, apiKey, prompt, image, aspectRatio, imageSize }) => {
-  const res = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`, {
+  let res;
+  try {
+    res = await fetchWithTimeout(`${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -176,7 +208,15 @@ const callGemini = async ({ model, apiKey, prompt, image, aspectRatio, imageSize
         imageConfig: { aspectRatio, imageSize }
       }
     })
-  });
+    }, CALL_TIMEOUT_MS);
+  } catch (e) {
+    const timedOut = e?.name === 'AbortError';
+    return {
+      ok: false,
+      status: timedOut ? 504 : 502,
+      message: timedOut ? `Model ${Math.round(CALL_TIMEOUT_MS / 1000)} sn içinde yanıt vermedi.` : String(e?.message || e)
+    };
+  }
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, status: res.status, message: json?.error?.message || '' };
@@ -239,10 +279,22 @@ export default async function handler(req, res) {
 
   const referer = req.headers?.origin || req.headers?.referer;
   const attempts = [];
+  const startedAt = Date.now();
   let lastStatus = 502;
   let lastClassified = { code: 'PROVIDER_ERROR', userMessage: 'Denenen tüm görsel modelleri başarısız oldu.' };
 
   for (const model of models) {
+    // Kalan süre yeni bir denemeye yetmiyorsa zinciri kes; yoksa fonksiyon
+    // süresi aşılır ve kullanıcı hiçbir mesaj görmeden 504 alır.
+    const elapsed = Date.now() - startedAt;
+    if (attempts.length > 0 && elapsed > NEXT_ATTEMPT_BUDGET_MS) {
+      lastClassified = {
+        code: 'TIME_BUDGET',
+        userMessage: `Süre bütçesi doldu (${Math.round(elapsed / 1000)} sn). Tekrar deneyin.`
+      };
+      break;
+    }
+
     const result = isOpenRouter
       ? await callOpenRouter({ model, apiKey, prompt, image, referer })
       : await callGemini({ model, apiKey, prompt, image, aspectRatio, imageSize });

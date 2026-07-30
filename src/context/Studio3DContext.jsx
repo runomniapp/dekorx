@@ -380,6 +380,35 @@ export const Studio3DProvider = ({ children }) => {
     return options.reduce((best, o) => (Math.abs(o[1] - target) < Math.abs(best[1] - target) ? o : best))[0];
   };
 
+  // Yakalanan kareyi yükleme için küçültür ve JPEG'e çevirir.
+  // Retina/4K ekranlarda 2x PNG yakalama 10 megapiksele ve ~4 MB gövdeye
+  // çıkabiliyor; Vercel'in istek sınırı 4.5 MB. AI için kayıpsızlık gereksiz.
+  const prepareUploadImage = (dataUrl, maxEdge = 1600) =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+          const cw = Math.max(1, Math.round(img.width * scale));
+          const ch = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = cw;
+          canvas.height = ch;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          // Saydam alanlar JPEG'de siyaha döner; beyaz zemin bas
+          ctx.fillStyle = '#F0F4F8';
+          ctx.fillRect(0, 0, cw, ch);
+          ctx.drawImage(img, 0, 0, cw, ch);
+          resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.92), width: cw, height: ch });
+        } catch {
+          resolve({ dataUrl, width: img.width, height: img.height });
+        }
+      };
+      img.onerror = () => resolve({ dataUrl, width: 0, height: 0 });
+      img.src = dataUrl;
+    });
+
   // ── AI ile Çiz: blockout kareyi + sahne verisini backend'e gönderir
   const [aiRender, setAiRender] = useState({ status: 'idle' });
   const [isAiRenderModalOpen, setIsAiRenderModalOpen] = useState(false);
@@ -398,25 +427,54 @@ export const Studio3DProvider = ({ children }) => {
     setIsAiGenerating(true);
 
     try {
-      const res = await fetch('/api/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: shot.dataUrl,
-          scene,
-          aspectRatio: pickAspectRatio(shot.width, shot.height),
-          imageSize: '2K'
-        })
+      const upload = await prepareUploadImage(shot.dataUrl);
+      const payload = JSON.stringify({
+        image: upload.dataUrl,
+        scene,
+        aspectRatio: pickAspectRatio(upload.width || shot.width, upload.height || shot.height),
+        imageSize: '2K'
       });
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.image) {
+      // Vercel'in istek gövdesi sınırı 4.5 MB; aşarsak sunucu HTML hata
+      // döndürür ve kullanıcı anlamsız bir mesaj görür.
+      const payloadMb = payload.length / (1024 * 1024);
+      if (payloadMb > 4) {
         setAiRender({
           status: 'error',
           sourceImage: shot.dataUrl,
-          code: data.code,
-          error: data.error || `Sunucu ${res.status} döndü.`,
+          code: 'IMAGE_TOO_LARGE',
+          error: `Sahne görüntüsü çok büyük (${payloadMb.toFixed(1)} MB). Tarayıcı penceresini biraz küçültüp tekrar deneyin.`
+        });
+        return;
+      }
+
+      const res = await fetch('/api/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      });
+
+      // Zaman aşımı / boyut hatalarında Vercel JSON değil HTML döndürür
+      const raw = await res.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!res.ok || !data.image) {
+        const fallback = res.status === 413
+          ? 'Görsel çok büyük olduğu için sunucu isteği reddetti.'
+          : res.status === 504
+            ? 'Render süre sınırını aştı. Tekrar deneyin; sorun sürerse daha hızlı bir model seçilmeli.'
+            : `Sunucu ${res.status} döndü.${raw && !raw.startsWith('{') ? ` (${raw.slice(0, 120).replace(/<[^>]*>/g, ' ').trim()})` : ''}`;
+
+        setAiRender({
+          status: 'error',
+          sourceImage: shot.dataUrl,
+          code: data.code || `HTTP_${res.status}`,
+          error: data.error || fallback,
           attempts: data.attempts
         });
         return;
